@@ -13,6 +13,7 @@ A simple Discord bot that plays music from YouTube URLs or song names, with queu
 - **FFmpeg**: Required for audio playback (included in Docker, installed manually if running with Python).
 
 ## Configure
+- Clone repo to your system.
 - Copy .env.example to .env.
 - Paste your discord bot token in .env
 - Place cookies.txt in the project directory.
