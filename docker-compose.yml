@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  music-bot:
+  simpledcmusicbot:
     build: .
     image: simpledcmusicbot
     container_name: simpledcmusicbot
