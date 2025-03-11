@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  music-bot:
+    build: .
+    image: simpledcmusicbot
+    container_name: simpledcmusicbot
+    env_file:
+      - .env
+    volumes:
+      - ./cookies.txt:/app/cookies.txt
+    restart: unless-stopped
