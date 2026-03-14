@@ -154,6 +154,19 @@ def _pick_stream_url_from_formats(info: Dict[str, Any]) -> str | None:
     if not isinstance(formats, list):
         return None
 
+    def _to_float(value: Any) -> float:
+        try:
+            if value is None:
+                return 0.0
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value).strip().lower()
+            if not text or text in {"none", "nan", "inf", "-inf", "audio only"}:
+                return 0.0
+            return float(text)
+        except (TypeError, ValueError):
+            return 0.0
+
     audio_candidates = []
     for fmt in formats:
         if not isinstance(fmt, dict):
@@ -165,9 +178,9 @@ def _pick_stream_url_from_formats(info: Dict[str, Any]) -> str | None:
         if acodec in (None, "none"):
             continue
         score = (
-            float(fmt.get("abr") or 0),
-            float(fmt.get("asr") or 0),
-            float(fmt.get("tbr") or 0),
+            _to_float(fmt.get("abr")),
+            _to_float(fmt.get("asr")),
+            _to_float(fmt.get("tbr")),
         )
         audio_candidates.append((score, str(url)))
 
