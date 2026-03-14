@@ -5,3 +5,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # Optional: mount a local cookies file directory for YouTube auth challenges.
+    volumes:
+      - ./cookies:/cookies:ro

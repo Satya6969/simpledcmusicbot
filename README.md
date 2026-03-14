@@ -119,9 +119,21 @@ Environment variables:
 - `YTDLP_TIMEOUT_SECONDS`: extraction timeout per request (default: 25)
 - `YTDLP_CACHE_TTL_SECONDS`: metadata cache duration in seconds (default: 300)
 - `YTDLP_CACHE_MAX_SIZE`: max cached query entries (default: 128)
+- `YTDLP_PLAYER_CLIENTS`: youtube client order for extraction (default: `android,web`)
+- `YTDLP_USER_AGENT`: optional custom user agent for yt-dlp HTTP requests
+- `YTDLP_COOKIES_FILE`: path to exported `cookies.txt` for authenticated YouTube requests
+- `YTDLP_COOKIES_FROM_BROWSER`: browser profile for local cookie extraction (local only, not typical in Docker)
 
 ## Troubleshooting
 
 - If you see voice connection errors, verify the bot has permission to connect and speak.
 - If extraction fails, ensure outbound internet access and that YouTube is reachable.
 - If audio does not play locally, verify FFmpeg is installed and on PATH.
+- If you see `Sign in to confirm you're not a bot`, provide YouTube cookies:
+   1. Export `cookies.txt` from a logged-in browser using a trusted extension.
+   2. Place it at `./cookies/youtube.txt` in your project root.
+   3. Set `YTDLP_COOKIES_FILE=/cookies/youtube.txt` in your `.env`.
+   4. Recreate container: `docker compose down && docker compose up --build -d`.
+- For local (non-Docker) runs, you can set either:
+   - `YTDLP_COOKIES_FILE=C:/path/to/cookies.txt`
+   - or `YTDLP_COOKIES_FROM_BROWSER=chrome` (if supported on your system)
