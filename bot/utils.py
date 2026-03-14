@@ -53,9 +53,6 @@ YTDLP_OPTIONS: Dict[str, Any] = {
     "default_search": "ytsearch1",
     "extractor_retries": 2,
     "retries": 2,
-    "ignore_no_formats_error": True,
-    "youtube_include_dash_manifest": True,
-    "youtube_include_hls_manifest": True,
     "socket_timeout": 10,
     "concurrent_fragment_downloads": 4,
     "source_address": "0.0.0.0",
@@ -244,7 +241,8 @@ def _extract_info_sync(query: str) -> TrackInfo:
 
             raise ExtractionError(f"yt-dlp failed for query: {query}") from exc
         except Exception as exc:
-            raise ExtractionError(f"unexpected extraction error for query: {query}") from exc
+            logger.exception("yt-dlp unexpected exception for query '%s'", query)
+            raise ExtractionError(f"unexpected extraction error for query: {query} ({type(exc).__name__}: {exc})") from exc
 
     if info is None and last_download_error is not None:
         raise ExtractionError(

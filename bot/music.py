@@ -79,6 +79,7 @@ class Music(commands.Cog):
         try:
             info = await extract_track(query)
         except ExtractionError as exc:
+            logger.warning("Guild %s: extraction failed for query '%s': %s", ctx.guild.id, query, exc)
             await ctx.send(f"Could not find a playable result: {exc}")
             return
         except Exception:
