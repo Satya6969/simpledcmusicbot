@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import threading
+import tempfile
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -133,6 +135,29 @@ def _candidate_yt_dlp_options() -> list[Dict[str, Any]]:
     return candidates
 
 
+def _prepare_runtime_ytdlp_options(options: Dict[str, Any]) -> tuple[Dict[str, Any], str | None]:
+    """Create per-call yt-dlp options with writable cookie path when needed."""
+    runtime_options = dict(options)
+    cookiefile = runtime_options.get("cookiefile")
+    if not cookiefile:
+        return runtime_options, None
+
+    try:
+        source = Path(str(cookiefile))
+        if not source.exists():
+            raise ExtractionError(f"Configured YTDLP_COOKIES_FILE does not exist: {source}")
+
+        fd, temp_cookie_path = tempfile.mkstemp(prefix="ytcookies_", suffix=".txt")
+        os.close(fd)
+        shutil.copy2(source, temp_cookie_path)
+        runtime_options["cookiefile"] = temp_cookie_path
+        return runtime_options, temp_cookie_path
+    except ExtractionError:
+        raise
+    except Exception as exc:
+        raise ExtractionError(f"Failed to prepare writable cookie file for yt-dlp: {exc}") from exc
+
+
 def _pick_stream_url_from_formats(info: Dict[str, Any]) -> str | None:
     requested_downloads = info.get("requested_downloads") or []
     if isinstance(requested_downloads, list):
@@ -229,8 +254,10 @@ def _extract_info_sync(query: str) -> TrackInfo:
 
     candidates = _candidate_yt_dlp_options()
     for attempt, ytdlp_options in enumerate(candidates, start=1):
+        temp_cookie_path: str | None = None
         try:
-            with yt_dlp.YoutubeDL(ytdlp_options) as ydl:
+            runtime_options, temp_cookie_path = _prepare_runtime_ytdlp_options(ytdlp_options)
+            with yt_dlp.YoutubeDL(runtime_options) as ydl:
                 info = ydl.extract_info(search_query, download=False)
             break
         except yt_dlp.utils.DownloadError as exc:
@@ -241,6 +268,11 @@ def _extract_info_sync(query: str) -> TrackInfo:
                 raise ExtractionError(
                     "YouTube requires authentication for this request. Set YTDLP_COOKIES_FILE to a valid cookies.txt "
                     "(and mount it into Docker), then retry."
+                ) from exc
+
+            if "does not look like a Netscape format cookies file" in message or "failed to load cookies" in message:
+                raise ExtractionError(
+                    "Configured cookies file is invalid. Export a Netscape cookies.txt file and set YTDLP_COOKIES_FILE to it."
                 ) from exc
 
             if "Requested format is not available" in message and attempt < len(candidates):
@@ -256,6 +288,12 @@ def _extract_info_sync(query: str) -> TrackInfo:
         except Exception as exc:
             logger.exception("yt-dlp unexpected exception for query '%s'", query)
             raise ExtractionError(f"unexpected extraction error for query: {query} ({type(exc).__name__}: {exc})") from exc
+        finally:
+            if temp_cookie_path:
+                try:
+                    Path(temp_cookie_path).unlink(missing_ok=True)
+                except Exception:
+                    logger.debug("Failed to remove temporary cookie file %s", temp_cookie_path, exc_info=True)
 
     if info is None and last_download_error is not None:
         raise ExtractionError(
@@ -274,7 +312,6 @@ def _extract_info_sync(query: str) -> TrackInfo:
     if info.get("is_live"):
         logger.info("Live stream detected: %s", info.get("title", "unknown"))
 
-    stream_url = info.get("url")
     webpage_url = info.get("webpage_url")
     title = info.get("title")
 
