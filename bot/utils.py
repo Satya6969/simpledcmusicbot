@@ -131,7 +131,41 @@ def _candidate_yt_dlp_options() -> list[Dict[str, Any]]:
     broad_fallback["format"] = "best"
     candidates.append(broad_fallback)
 
+    # Fallback 3: do not force any format selection and choose stream URL manually.
+    no_selector_fallback = dict(broad_fallback)
+    no_selector_fallback.pop("format", None)
+    candidates.append(no_selector_fallback)
+
     return candidates
+
+
+def _pick_stream_url_from_formats(info: Dict[str, Any]) -> str | None:
+    formats = info.get("formats") or []
+    if not isinstance(formats, list):
+        return None
+
+    audio_candidates = []
+    for fmt in formats:
+        if not isinstance(fmt, dict):
+            continue
+        url = fmt.get("url")
+        acodec = fmt.get("acodec")
+        if not url:
+            continue
+        if acodec in (None, "none"):
+            continue
+        score = (
+            float(fmt.get("abr") or 0),
+            float(fmt.get("asr") or 0),
+            float(fmt.get("tbr") or 0),
+        )
+        audio_candidates.append((score, str(url)))
+
+    if not audio_candidates:
+        return None
+
+    audio_candidates.sort(reverse=True)
+    return audio_candidates[0][1]
 
 
 def _cache_get(query: str) -> TrackInfo | None:
@@ -170,7 +204,8 @@ def _extract_info_sync(query: str) -> TrackInfo:
     info: Dict[str, Any] | None = None
     last_download_error: Exception | None = None
 
-    for attempt, ytdlp_options in enumerate(_candidate_yt_dlp_options(), start=1):
+    candidates = _candidate_yt_dlp_options()
+    for attempt, ytdlp_options in enumerate(candidates, start=1):
         try:
             with yt_dlp.YoutubeDL(ytdlp_options) as ydl:
                 info = ydl.extract_info(search_query, download=False)
@@ -185,8 +220,13 @@ def _extract_info_sync(query: str) -> TrackInfo:
                     "(and mount it into Docker), then retry."
                 ) from exc
 
-            if "Requested format is not available" in message and attempt < 3:
-                logger.warning("Format not available for query '%s'; retrying with fallback profile %s/3", query, attempt + 1)
+            if "Requested format is not available" in message and attempt < len(candidates):
+                logger.warning(
+                    "Format not available for query '%s'; retrying with fallback profile %s/%s",
+                    query,
+                    attempt + 1,
+                    len(candidates),
+                )
                 continue
 
             raise ExtractionError(f"yt-dlp failed for query: {query}") from exc
@@ -213,6 +253,9 @@ def _extract_info_sync(query: str) -> TrackInfo:
     stream_url = info.get("url")
     webpage_url = info.get("webpage_url")
     title = info.get("title")
+
+    if not stream_url:
+        stream_url = _pick_stream_url_from_formats(info)
 
     if not stream_url or not webpage_url or not title:
         raise ExtractionError("Unable to parse required stream metadata.")
