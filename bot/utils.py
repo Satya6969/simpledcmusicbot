@@ -43,7 +43,6 @@ _cache_lock = threading.Lock()
 _extract_cache: OrderedDict[str, tuple[float, TrackInfo]] = OrderedDict()
 
 YTDLP_OPTIONS: Dict[str, Any] = {
-    "format": "bestaudio/best",
     "noplaylist": True,
     "playlistend": 1,
     "skip_download": True,
@@ -54,6 +53,9 @@ YTDLP_OPTIONS: Dict[str, Any] = {
     "default_search": "ytsearch1",
     "extractor_retries": 2,
     "retries": 2,
+    "ignore_no_formats_error": True,
+    "youtube_include_dash_manifest": True,
+    "youtube_include_hls_manifest": True,
     "socket_timeout": 10,
     "concurrent_fragment_downloads": 4,
     "source_address": "0.0.0.0",
@@ -117,29 +119,40 @@ def _build_yt_dlp_options() -> Dict[str, Any]:
 def _candidate_yt_dlp_options() -> list[Dict[str, Any]]:
     base = _build_yt_dlp_options()
 
-    # First attempt: configured profile.
+    # First attempt: configured client profile.
     candidates: list[Dict[str, Any]] = [base]
 
-    # Fallback 1: relax format constraints.
-    relaxed_format = dict(base)
-    relaxed_format["format"] = "bestaudio*/bestaudio/best"
-    candidates.append(relaxed_format)
-
-    # Fallback 2: remove client pinning and use broad best format selection.
-    broad_fallback = dict(relaxed_format)
+    # Fallback 1: remove explicit client pinning and let yt-dlp choose extractor client.
+    broad_fallback = dict(base)
     broad_fallback.pop("extractor_args", None)
-    broad_fallback["format"] = "best"
     candidates.append(broad_fallback)
 
-    # Fallback 3: do not force any format selection and choose stream URL manually.
+    # Fallback 2: keep no client pinning and slightly reduce extractor constraints.
     no_selector_fallback = dict(broad_fallback)
-    no_selector_fallback.pop("format", None)
+    no_selector_fallback["extractor_retries"] = 1
+    no_selector_fallback["retries"] = 1
     candidates.append(no_selector_fallback)
 
     return candidates
 
 
 def _pick_stream_url_from_formats(info: Dict[str, Any]) -> str | None:
+    requested_downloads = info.get("requested_downloads") or []
+    if isinstance(requested_downloads, list):
+        for item in requested_downloads:
+            if isinstance(item, dict) and item.get("url"):
+                return str(item["url"])
+
+    requested_formats = info.get("requested_formats") or []
+    if isinstance(requested_formats, list):
+        for item in requested_formats:
+            if isinstance(item, dict) and item.get("url") and item.get("acodec") not in (None, "none"):
+                return str(item["url"])
+
+    direct_url = info.get("url")
+    if direct_url:
+        return str(direct_url)
+
     formats = info.get("formats") or []
     if not isinstance(formats, list):
         return None
@@ -222,7 +235,7 @@ def _extract_info_sync(query: str) -> TrackInfo:
 
             if "Requested format is not available" in message and attempt < len(candidates):
                 logger.warning(
-                    "Format not available for query '%s'; retrying with fallback profile %s/%s",
+                    "Extractor returned no usable default format for '%s'; retrying profile %s/%s",
                     query,
                     attempt + 1,
                     len(candidates),
@@ -254,8 +267,7 @@ def _extract_info_sync(query: str) -> TrackInfo:
     webpage_url = info.get("webpage_url")
     title = info.get("title")
 
-    if not stream_url:
-        stream_url = _pick_stream_url_from_formats(info)
+    stream_url = _pick_stream_url_from_formats(info)
 
     if not stream_url or not webpage_url or not title:
         raise ExtractionError("Unable to parse required stream metadata.")
