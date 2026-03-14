@@ -114,6 +114,26 @@ def _build_yt_dlp_options() -> Dict[str, Any]:
     return options
 
 
+def _candidate_yt_dlp_options() -> list[Dict[str, Any]]:
+    base = _build_yt_dlp_options()
+
+    # First attempt: configured profile.
+    candidates: list[Dict[str, Any]] = [base]
+
+    # Fallback 1: relax format constraints.
+    relaxed_format = dict(base)
+    relaxed_format["format"] = "bestaudio*/bestaudio/best"
+    candidates.append(relaxed_format)
+
+    # Fallback 2: remove client pinning and use broad best format selection.
+    broad_fallback = dict(relaxed_format)
+    broad_fallback.pop("extractor_args", None)
+    broad_fallback["format"] = "best"
+    candidates.append(broad_fallback)
+
+    return candidates
+
+
 def _cache_get(query: str) -> TrackInfo | None:
     if _EXTRACT_CACHE_TTL_SECONDS <= 0:
         return None
@@ -147,21 +167,36 @@ def _cache_set(query: str, track: TrackInfo) -> None:
 
 def _extract_info_sync(query: str) -> TrackInfo:
     search_query = query if is_url(query) else f"ytsearch1:{query}"
-    ytdlp_options = _build_yt_dlp_options()
+    info: Dict[str, Any] | None = None
+    last_download_error: Exception | None = None
 
-    try:
-        with yt_dlp.YoutubeDL(ytdlp_options) as ydl:
-            info = ydl.extract_info(search_query, download=False)
-    except yt_dlp.utils.DownloadError as exc:
-        message = str(exc)
-        if "Sign in to confirm you're not a bot" in message:
-            raise ExtractionError(
-                "YouTube requires authentication for this request. Set YTDLP_COOKIES_FILE to a valid cookies.txt "
-                "(and mount it into Docker), then retry."
-            ) from exc
-        raise ExtractionError(f"yt-dlp failed for query: {query}") from exc
-    except Exception as exc:
-        raise ExtractionError(f"unexpected extraction error for query: {query}") from exc
+    for attempt, ytdlp_options in enumerate(_candidate_yt_dlp_options(), start=1):
+        try:
+            with yt_dlp.YoutubeDL(ytdlp_options) as ydl:
+                info = ydl.extract_info(search_query, download=False)
+            break
+        except yt_dlp.utils.DownloadError as exc:
+            last_download_error = exc
+            message = str(exc)
+
+            if "Sign in to confirm you're not a bot" in message:
+                raise ExtractionError(
+                    "YouTube requires authentication for this request. Set YTDLP_COOKIES_FILE to a valid cookies.txt "
+                    "(and mount it into Docker), then retry."
+                ) from exc
+
+            if "Requested format is not available" in message and attempt < 3:
+                logger.warning("Format not available for query '%s'; retrying with fallback profile %s/3", query, attempt + 1)
+                continue
+
+            raise ExtractionError(f"yt-dlp failed for query: {query}") from exc
+        except Exception as exc:
+            raise ExtractionError(f"unexpected extraction error for query: {query}") from exc
+
+    if info is None and last_download_error is not None:
+        raise ExtractionError(
+            "No playable stream format was available for this video. Try another video or update YTDLP_PLAYER_CLIENTS."
+        ) from last_download_error
 
     if info is None:
         raise ExtractionError("No media information returned by yt-dlp.")
