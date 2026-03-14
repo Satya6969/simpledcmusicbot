@@ -132,6 +132,17 @@ def _candidate_yt_dlp_options() -> list[Dict[str, Any]]:
     no_selector_fallback["retries"] = 1
     candidates.append(no_selector_fallback)
 
+    # Fallback 3: disable cookies; some cookie sets can reduce available formats.
+    no_cookies_fallback = dict(no_selector_fallback)
+    no_cookies_fallback.pop("cookiefile", None)
+    no_cookies_fallback.pop("cookiesfrombrowser", None)
+    candidates.append(no_cookies_fallback)
+
+    # Fallback 4: minimal youtube args without client pinning and without cookies.
+    minimal_fallback = dict(no_cookies_fallback)
+    minimal_fallback.pop("extractor_args", None)
+    candidates.append(minimal_fallback)
+
     return candidates
 
 
