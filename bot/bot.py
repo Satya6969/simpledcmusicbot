@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from music import Music
+from .music import Music
 
 load_dotenv()
 

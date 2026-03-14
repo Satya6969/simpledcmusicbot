@@ -8,8 +8,8 @@ from typing import Optional
 
 import discord
 
-from queue import SongQueue
-from utils import FFMPEG_OPTIONS, ExtractionError, extract_track
+from .song_queue import SongQueue
+from .utils import FFMPEG_OPTIONS, ExtractionError, extract_track
 
 logger = logging.getLogger(__name__)
 

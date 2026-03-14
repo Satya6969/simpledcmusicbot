@@ -8,8 +8,8 @@ from typing import Dict
 import discord
 from discord.ext import commands
 
-from player import GuildMusicPlayer, Track
-from utils import ExtractionError, extract_track, format_duration
+from .player import GuildMusicPlayer, Track
+from .utils import ExtractionError, extract_track, format_duration
 
 logger = logging.getLogger(__name__)
 

@@ -28,7 +28,7 @@ musicbot/
 │   ├── bot.py
 │   ├── music.py
 │   ├── player.py
-│   ├── queue.py
+│   ├── song_queue.py
 │   └── utils.py
 │
 ├── requirements.txt
@@ -74,7 +74,7 @@ musicbot/
 4. Start bot:
 
    ```bash
-   python bot/bot.py
+   python -m bot.bot
    ```
 
 ## Docker Run
